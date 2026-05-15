@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor de Logs</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Monitor de Logs - Sistema Web</h1>
+            <button id="theme-toggle" class="theme-toggle" title="Alternar tema">
+                <span class="theme-icon">🌙</span>
+            </button>
+        </header>
+
+        <section class="files-section">
+            <h2>Arquivos disponíveis:</h2>
+            <div id="file-buttons" class="file-buttons"></div>
+        </section>
+
+        <section class="content-section">
+            <div id="log-content" class="log-content">
+                <div class="empty-state">
+                    <p>Selecione um arquivo de log acima para visualizar</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
