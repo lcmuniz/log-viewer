@@ -1,21 +1,20 @@
-.PHONY: build install clean run
+.PHONY: build install run test lint clean
 
 build:
-	@echo "Building log-viewer..."
-	@go build -o bin/log-viewer ./cmd/log-viewer
-	@mkdir -p bin/static
-	@cp static/* bin/static/
-	@echo "Build complete! Binary: bin/log-viewer"
+	go build -o bin/log-viewer ./cmd/log-viewer
 
 install:
-	@echo "Installing log-viewer..."
-	@go install ./cmd/log-viewer
-	@echo "Install complete!"
-	@echo "You can now run: log-viewer"
+	go install ./cmd/log-viewer
 
 run:
-	@go run ./cmd/log-viewer
+	go run ./cmd/log-viewer
+
+test:
+	go test -race ./...
+
+lint:
+	gofmt -l . | (! grep .)
+	go vet ./...
 
 clean:
-	@rm -rf bin/
-	@echo "Clean complete!"
+	rm -rf bin/

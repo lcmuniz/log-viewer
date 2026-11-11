@@ -40,17 +40,37 @@ class LogViewer {
 
     async loadConfig() {
         try {
-            const response = await fetch('/api/config');
-            this.config = await response.json();
+            this.config = await this.fetchJSON('/api/config');
         } catch (error) {
             console.error('Error loading config:', error);
+            this.config = { refreshInterval: 5, theme: 'light' };
         }
+    }
+
+    async fetchJSON(url) {
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) {
+            const text = (await response.text()).trim();
+            throw new Error(text || `HTTP ${response.status}`);
+        }
+        return response.json();
+    }
+
+    // DOM ids are derived from file names; keep them free of special chars.
+    domId(prefix, fileName) {
+        return `${prefix}-${encodeURIComponent(fileName).replace(/%/g, '_')}`;
+    }
+
+    el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
     }
 
     async loadFiles() {
         try {
-            const response = await fetch('/api/logs');
-            const files = await response.json();
+            const files = await this.fetchJSON('/api/logs');
             this.renderFileButtons(files);
         } catch (error) {
             console.error('Error loading files:', error);
@@ -60,7 +80,12 @@ class LogViewer {
 
     renderFileButtons(files) {
         const container = document.getElementById('file-buttons');
-        container.innerHTML = '';
+        container.replaceChildren();
+
+        if (files.length === 0) {
+            container.appendChild(this.el('p', 'log-info', 'Nenhum arquivo .log/.txt encontrado na pasta.'));
+            return;
+        }
 
         files.forEach(file => {
             const button = document.createElement('button');
@@ -117,9 +142,12 @@ class LogViewer {
     }
 
     async refreshFileButtons() {
-        const response = await fetch('/api/logs');
-        const files = await response.json();
-        this.renderFileButtons(files);
+        try {
+            const files = await this.fetchJSON('/api/logs');
+            this.renderFileButtons(files);
+        } catch (error) {
+            console.error('Error refreshing files:', error);
+        }
     }
 
     closeTab(fileName) {
@@ -149,11 +177,9 @@ class LogViewer {
         const container = document.getElementById('log-content');
 
         if (!this.activeTab) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <p>Selecione um arquivo de log acima para visualizar</p>
-                </div>
-            `;
+            const empty = this.el('div', 'empty-state');
+            empty.appendChild(this.el('p', null, 'Selecione um arquivo de log acima para visualizar'));
+            container.replaceChildren(empty);
             return;
         }
 
@@ -162,7 +188,8 @@ class LogViewer {
             emptyState.remove();
         }
 
-        const existingView = container.querySelector(`[data-file="${this.activeTab}"]`);
+        const existingView = Array.from(container.querySelectorAll('.log-view'))
+            .find(view => view.dataset.file === this.activeTab);
 
         container.querySelectorAll('.log-view').forEach(view => {
             view.classList.remove('active');
@@ -174,45 +201,52 @@ class LogViewer {
             const view = document.createElement('div');
             view.className = 'log-view active';
             view.dataset.file = this.activeTab;
-            view.innerHTML = `
-                <div class="log-header">
-                    <div>
-                        <span class="log-title">[${this.activeTab}]</span>
-                        <span class="log-info" id="last-update-${this.activeTab}"></span>
-                    </div>
-                    <div class="log-controls">
-                        <label>
-                            <input type="checkbox" id="autoscroll-${this.activeTab}" checked>
-                            Auto-scroll
-                        </label>
-                        <span class="log-info">Refresh: ${this.config.refreshInterval}s</span>
-                    </div>
-                </div>
-                <div class="log-body" id="log-body-${this.activeTab}">
-                    <div class="loading">Carregando...</div>
-                </div>
-            `;
-            container.appendChild(view);
+            const fileName = this.activeTab;
 
-            document.getElementById(`autoscroll-${this.activeTab}`).onchange = (e) => {
-                const tab = this.openTabs.get(this.activeTab);
+            const header = this.el('div', 'log-header');
+            const titleBox = this.el('div');
+            titleBox.appendChild(this.el('span', 'log-title', `[${fileName}]`));
+            const info = this.el('span', 'log-info');
+            info.id = this.domId('last-update', fileName);
+            titleBox.appendChild(info);
+
+            const controls = this.el('div', 'log-controls');
+            const label = this.el('label');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = true;
+            checkbox.onchange = (e) => {
+                const tab = this.openTabs.get(fileName);
                 if (tab) {
                     tab.autoScroll = e.target.checked;
                 }
             };
+            label.append(checkbox, ' Auto-scroll');
+            controls.append(label, this.el('span', 'log-info', `Refresh: ${this.config.refreshInterval}s`));
+            header.append(titleBox, controls);
+
+            const body = this.el('div', 'log-body');
+            body.id = this.domId('log-body', fileName);
+            body.appendChild(this.el('div', 'loading', 'Carregando...'));
+
+            view.append(header, body);
+            container.appendChild(view);
         }
     }
 
     async loadLogContent(fileName) {
         try {
-            const response = await fetch(`/api/log?file=${encodeURIComponent(fileName)}`);
-            const data = await response.json();
+            const data = await this.fetchJSON(`/api/log?file=${encodeURIComponent(fileName)}`);
 
-            const bodyElement = document.getElementById(`log-body-${fileName}`);
-            const updateElement = document.getElementById(`last-update-${fileName}`);
+            const bodyElement = document.getElementById(this.domId('log-body', fileName));
+            const updateElement = document.getElementById(this.domId('last-update', fileName));
 
             if (bodyElement) {
-                bodyElement.textContent = data.content || '(arquivo vazio)';
+                let text = data.content || '(arquivo vazio)';
+                if (data.truncated) {
+                    text = `… (mostrando apenas o final do arquivo de ${data.size} bytes)\n` + text;
+                }
+                bodyElement.textContent = text;
 
                 const tab = this.openTabs.get(fileName);
                 if (tab && tab.autoScroll) {
@@ -232,9 +266,9 @@ class LogViewer {
 
         } catch (error) {
             console.error(`Error loading log ${fileName}:`, error);
-            const bodyElement = document.getElementById(`log-body-${fileName}`);
+            const bodyElement = document.getElementById(this.domId('log-body', fileName));
             if (bodyElement) {
-                bodyElement.innerHTML = `<div class="error-message">Erro ao carregar o log: ${error.message}</div>`;
+                bodyElement.replaceChildren(this.el('div', 'error-message', `Erro ao carregar o log: ${error.message}`));
             }
         }
     }
@@ -262,9 +296,7 @@ class LogViewer {
 
     showError(message) {
         const container = document.getElementById('log-content');
-        container.innerHTML = `
-            <div class="error-message">${message}</div>
-        `;
+        container.replaceChildren(this.el('div', 'error-message', message));
     }
 }
 
